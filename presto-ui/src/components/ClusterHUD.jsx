@@ -12,7 +12,7 @@
  * limitations under the License.
  */
 
-import React from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 
 import {addExponentiallyWeightedToHistory, addToHistory, formatCount, formatDataSizeBytes, precisionRound} from "../utils";
 
@@ -26,271 +26,264 @@ const SPARKLINE_PROPERTIES = {
     disableHiddenCheck: true,
 };
 
-export class ClusterHUD extends React.Component {
-    constructor(props) {
-        super(props);
-        this.state = {
-            runningQueries: [],
-            queuedQueries: [],
-            blockedQueries: [],
-            activeWorkers: [],
-            runningDrivers: [],
-            reservedMemory: [],
-            rowInputRate: [],
-            byteInputRate: [],
-            perWorkerCpuTimeRate: [],
+export const ClusterHUD = () => {
+    const [runningQueries, setRunningQueries] = useState([]);
+    const [queuedQueries, setQueuedQueries] = useState([]);
+    const [blockedQueries, setBlockedQueries] = useState([]);
+    const [activeWorkers, setActiveWorkers] = useState([]);
+    const [runningDrivers, setRunningDrivers] = useState([]);
+    const [reservedMemory, setReservedMemory] = useState([]);
+    const [rowInputRate, setRowInputRate] = useState([]);
+    const [byteInputRate, setByteInputRate] = useState([]);
+    const [perWorkerCpuTimeRate, setPerWorkerCpuTimeRate] = useState([]);
 
-            lastRender: null,
-            lastRefresh: null,
+    const [lastRender, setLastRender] = useState(null);
+    const [lastRefresh, setLastRefresh] = useState(null);
 
-            lastInputRows: null,
-            lastInputBytes: null,
-            lastCpuTime: null,
+    const [lastInputRows, setLastInputRows] = useState(null);
+    const [lastInputBytes, setLastInputBytes] = useState(null);
+    const [lastCpuTime, setLastCpuTime] = useState(null);
 
-            initialized: false,
-        };
 
-        this.refreshLoop = this.refreshLoop.bind(this);
-    }
+    const timeoutIdRef = useRef(null);
 
-    resetTimer() {
-        clearTimeout(this.timeoutId);
+    const resetTimer = useCallback(() => {
+        clearTimeout(timeoutIdRef.current);
         // stop refreshing when query finishes or fails
-        if (this.state.query === null || !this.state.ended) {
-            this.timeoutId = setTimeout(this.refreshLoop, 1000);
-        }
-    }
+        // Note: query and ended properties don't exist in this component, so this condition is always true
+        timeoutIdRef.current = setTimeout(() => {
+            refreshLoop();
+        }, 1000);
+    }, []);
 
-    refreshLoop() {
-        clearTimeout(this.timeoutId); // to stop multiple series of refreshLoop from going on simultaneously
+    const refreshLoop = useCallback(() => {
+        clearTimeout(timeoutIdRef.current); // to stop multiple series of refreshLoop from going on simultaneously
         $.get('/v1/cluster', function (clusterState) {
 
             let newRowInputRate = [];
             let newByteInputRate = [];
             let newPerWorkerCpuTimeRate = [];
-            if (this.state.lastRefresh !== null) {
-                const rowsInputSinceRefresh = clusterState.totalInputRows - this.state.lastInputRows;
-                const bytesInputSinceRefresh = clusterState.totalInputBytes - this.state.lastInputBytes;
-                const cpuTimeSinceRefresh = clusterState.totalCpuTimeSecs - this.state.lastCpuTime;
-                const secsSinceRefresh = (Date.now() - this.state.lastRefresh) / 1000.0;
+            if (lastRefresh !== null) {
+                const rowsInputSinceRefresh = clusterState.totalInputRows - lastInputRows;
+                const bytesInputSinceRefresh = clusterState.totalInputBytes - lastInputBytes;
+                const cpuTimeSinceRefresh = clusterState.totalCpuTimeSecs - lastCpuTime;
+                const secsSinceRefresh = (Date.now() - lastRefresh) / 1000.0;
 
-                newRowInputRate = addExponentiallyWeightedToHistory(rowsInputSinceRefresh / secsSinceRefresh, this.state.rowInputRate);
-                newByteInputRate = addExponentiallyWeightedToHistory(bytesInputSinceRefresh / secsSinceRefresh, this.state.byteInputRate);
-                newPerWorkerCpuTimeRate = addExponentiallyWeightedToHistory((cpuTimeSinceRefresh / clusterState.activeWorkers) / secsSinceRefresh, this.state.perWorkerCpuTimeRate);
+                newRowInputRate = addExponentiallyWeightedToHistory(rowsInputSinceRefresh / secsSinceRefresh, rowInputRate);
+                newByteInputRate = addExponentiallyWeightedToHistory(bytesInputSinceRefresh / secsSinceRefresh, byteInputRate);
+                newPerWorkerCpuTimeRate = addExponentiallyWeightedToHistory((cpuTimeSinceRefresh / clusterState.activeWorkers) / secsSinceRefresh, perWorkerCpuTimeRate);
             }
 
-            this.setState({
-                // instantaneous stats
-                runningQueries: addToHistory(clusterState.runningQueries, this.state.runningQueries),
-                queuedQueries: addToHistory(clusterState.queuedQueries, this.state.queuedQueries),
-                blockedQueries: addToHistory(clusterState.blockedQueries, this.state.blockedQueries),
-                activeWorkers: addToHistory(clusterState.activeWorkers, this.state.activeWorkers),
+            // Update all state variables
+            setRunningQueries(prev => addToHistory(clusterState.runningQueries, prev));
+            setQueuedQueries(prev => addToHistory(clusterState.queuedQueries, prev));
+            setBlockedQueries(prev => addToHistory(clusterState.blockedQueries, prev));
+            setActiveWorkers(prev => addToHistory(clusterState.activeWorkers, prev));
 
-                // moving averages
-                runningDrivers: addExponentiallyWeightedToHistory(clusterState.runningDrivers, this.state.runningDrivers),
-                reservedMemory: addExponentiallyWeightedToHistory(clusterState.reservedMemory, this.state.reservedMemory),
+            setRunningDrivers(prev => addExponentiallyWeightedToHistory(clusterState.runningDrivers, prev));
+            setReservedMemory(prev => addExponentiallyWeightedToHistory(clusterState.reservedMemory, prev));
 
-                // moving averages for diffs
-                rowInputRate: newRowInputRate,
-                byteInputRate: newByteInputRate,
-                perWorkerCpuTimeRate: newPerWorkerCpuTimeRate,
+            setRowInputRate(newRowInputRate);
+            setByteInputRate(newByteInputRate);
+            setPerWorkerCpuTimeRate(newPerWorkerCpuTimeRate);
 
-                lastInputRows: clusterState.totalInputRows,
-                lastInputBytes: clusterState.totalInputBytes,
-                lastCpuTime: clusterState.totalCpuTimeSecs,
+            setLastInputRows(clusterState.totalInputRows);
+            setLastInputBytes(clusterState.totalInputBytes);
+            setLastCpuTime(clusterState.totalCpuTimeSecs);
 
-                initialized: true,
+            setLastRefresh(Date.now());
 
-                lastRefresh: Date.now()
-            });
-            this.resetTimer();
-        }.bind(this))
+            resetTimer();
+        })
         .fail(function () {
-                this.resetTimer();
-            }.bind(this));
-    }
+            resetTimer();
+        });
+    }, [lastRefresh, lastInputRows, lastInputBytes, lastCpuTime, rowInputRate, byteInputRate, perWorkerCpuTimeRate, resetTimer]);
 
-    componentDidMount() {
-        this.refreshLoop();
-    }
+    // Mount effect - replaces componentDidMount
+    useEffect(() => {
+        refreshLoop();
+        
+        // Cleanup on unmount
+        return () => {
+            clearTimeout(timeoutIdRef.current);
+        };
+    }, []);
 
-    componentDidUpdate() {
+    // Update effect - replaces componentDidUpdate
+    useEffect(() => {
         // prevent multiple calls to componentDidUpdate (resulting from calls to setState or otherwise) within the refresh interval from re-rendering sparklines/charts
-        if (this.state.lastRender === null || (Date.now() - this.state.lastRender) >= 1000) {
+        if (lastRender === null || (Date.now() - lastRender) >= 1000) {
             const renderTimestamp = Date.now();
-            $('#running-queries-sparkline').sparkline(this.state.runningQueries, $.extend({}, SPARKLINE_PROPERTIES, {chartRangeMin: 0}));
-            $('#blocked-queries-sparkline').sparkline(this.state.blockedQueries, $.extend({}, SPARKLINE_PROPERTIES, {chartRangeMin: 0}));
-            $('#queued-queries-sparkline').sparkline(this.state.queuedQueries, $.extend({}, SPARKLINE_PROPERTIES, {chartRangeMin: 0}));
+            $('#running-queries-sparkline').sparkline(runningQueries, $.extend({}, SPARKLINE_PROPERTIES, {chartRangeMin: 0}));
+            $('#blocked-queries-sparkline').sparkline(blockedQueries, $.extend({}, SPARKLINE_PROPERTIES, {chartRangeMin: 0}));
+            $('#queued-queries-sparkline').sparkline(queuedQueries, $.extend({}, SPARKLINE_PROPERTIES, {chartRangeMin: 0}));
 
-            $('#active-workers-sparkline').sparkline(this.state.activeWorkers, $.extend({}, SPARKLINE_PROPERTIES, {chartRangeMin: 0}));
-            $('#running-drivers-sparkline').sparkline(this.state.runningDrivers, $.extend({}, SPARKLINE_PROPERTIES, {numberFormatter: precisionRound}));
-            $('#reserved-memory-sparkline').sparkline(this.state.reservedMemory, $.extend({}, SPARKLINE_PROPERTIES, {numberFormatter: formatDataSizeBytes}));
+            $('#active-workers-sparkline').sparkline(activeWorkers, $.extend({}, SPARKLINE_PROPERTIES, {chartRangeMin: 0}));
+            $('#running-drivers-sparkline').sparkline(runningDrivers, $.extend({}, SPARKLINE_PROPERTIES, {numberFormatter: precisionRound}));
+            $('#reserved-memory-sparkline').sparkline(reservedMemory, $.extend({}, SPARKLINE_PROPERTIES, {numberFormatter: formatDataSizeBytes}));
 
-            $('#row-input-rate-sparkline').sparkline(this.state.rowInputRate, $.extend({}, SPARKLINE_PROPERTIES, {numberFormatter: formatCount}));
-            $('#byte-input-rate-sparkline').sparkline(this.state.byteInputRate, $.extend({}, SPARKLINE_PROPERTIES, {numberFormatter: formatDataSizeBytes}));
-            $('#cpu-time-rate-sparkline').sparkline(this.state.perWorkerCpuTimeRate, $.extend({}, SPARKLINE_PROPERTIES, {numberFormatter: precisionRound}));
+            $('#row-input-rate-sparkline').sparkline(rowInputRate, $.extend({}, SPARKLINE_PROPERTIES, {numberFormatter: formatCount}));
+            $('#byte-input-rate-sparkline').sparkline(byteInputRate, $.extend({}, SPARKLINE_PROPERTIES, {numberFormatter: formatDataSizeBytes}));
+            $('#cpu-time-rate-sparkline').sparkline(perWorkerCpuTimeRate, $.extend({}, SPARKLINE_PROPERTIES, {numberFormatter: precisionRound}));
 
-            this.setState({
-                lastRender: renderTimestamp
-            });
+            setLastRender(renderTimestamp);
         }
 
         $('[data-bs-toggle="tooltip"]')?.tooltip?.();
-    }
+    }, [runningQueries, queuedQueries, blockedQueries, activeWorkers, runningDrivers, reservedMemory, rowInputRate, byteInputRate, perWorkerCpuTimeRate, lastRender]);
 
-    render() {
-        return (<div className="row">
-            <div className="col-12">
-                <div className="row">
-                    <div className="col-4">
-                        <div className="stat-title">
-                            <span className="text" data-bs-toggle="tooltip" data-placement="right" title="Total number of queries currently running">
-                                Running queries
-                            </span>
-                        </div>
-                    </div>
-                    <div className="col-4">
-                        <div className="stat-title">
-                            <span className="text" data-bs-toggle="tooltip" data-placement="right" title="Total number of active worker nodes">
-                                Active workers
-                            </span>
-                        </div>
-                    </div>
-                    <div className="col-4">
-                        <div className="stat-title">
-                            <span className="text" data-bs-toggle="tooltip" data-placement="right" title="Moving average of input rows processed per second">
-                                Rows/sec
-                            </span>
-                        </div>
+    return (<div className="row">
+        <div className="col-12">
+            <div className="row">
+                <div className="col-4">
+                    <div className="stat-title">
+                        <span className="text" data-bs-toggle="tooltip" data-placement="right" title="Total number of queries currently running">
+                            Running queries
+                        </span>
                     </div>
                 </div>
-                <div className="row stat-line-end">
-                    <div className="col-4">
-                        <div className="stat stat-large">
-                            <span className="stat-text">
-                                {this.state.runningQueries[this.state.runningQueries.length - 1]}
-                            </span>
-                            <span className="sparkline" id="running-queries-sparkline"><div className="loader">Loading ...</div></span>
-                        </div>
-                    </div>
-                    <div className="col-4">
-                        <div className="stat stat-large">
-                            <span className="stat-text">
-                                {this.state.activeWorkers[this.state.activeWorkers.length - 1]}
-                            </span>
-                            <span className="sparkline" id="active-workers-sparkline"><div className="loader">Loading ...</div></span>
-                        </div>
-                    </div>
-                    <div className="col-4">
-                        <div className="stat stat-large">
-                            <span className="stat-text">
-                                {formatCount(this.state.rowInputRate[this.state.rowInputRate.length - 1])}
-                            </span>
-                            <span className="sparkline" id="row-input-rate-sparkline"><div className="loader">Loading ...</div></span>
-                        </div>
+                <div className="col-4">
+                    <div className="stat-title">
+                        <span className="text" data-bs-toggle="tooltip" data-placement="right" title="Total number of active worker nodes">
+                            Active workers
+                        </span>
                     </div>
                 </div>
-                <div className="row">
-                    <div className="col-4">
-                        <div className="stat-title">
-                            <span className="text" data-bs-toggle="tooltip" data-placement="right" title="Total number of queries currently queued and awaiting execution">
-                                Queued queries
-                            </span>
-                        </div>
-                    </div>
-                    <div className="col-4">
-                        <div className="stat-title">
-                            <span className="text" data-bs-toggle="tooltip" data-placement="right" title="Moving average of total running drivers">
-                                Runnable drivers
-                            </span>
-                        </div>
-                    </div>
-                    <div className="col-4">
-                        <div className="stat-title">
-                            <span className="text" data-bs-toggle="tooltip" data-placement="right" title="Moving average of input bytes processed per second">
-                                Bytes/sec
-                            </span>
-                        </div>
-                    </div>
-                </div>
-                <div className="row stat-line-end">
-                    <div className="col-4">
-                        <div className="stat stat-large">
-                            <span className="stat-text">
-                                {this.state.queuedQueries[this.state.queuedQueries.length - 1]}
-                            </span>
-                            <span className="sparkline" id="queued-queries-sparkline"><div className="loader">Loading ...</div></span>
-                        </div>
-                    </div>
-                    <div className="col-4">
-                        <div className="stat stat-large">
-                            <span className="stat-text">
-                                {formatCount(this.state.runningDrivers[this.state.runningDrivers.length - 1])}
-                            </span>
-                            <span className="sparkline" id="running-drivers-sparkline"><div className="loader">Loading ...</div></span>
-                        </div>
-                    </div>
-                    <div className="col-4">
-                        <div className="stat stat-large">
-                            <span className="stat-text">
-                                {formatDataSizeBytes(this.state.byteInputRate[this.state.byteInputRate.length - 1])}
-                            </span>
-                            <span className="sparkline" id="byte-input-rate-sparkline"><div className="loader">Loading ...</div></span>
-                        </div>
-                    </div>
-                </div>
-                <div className="row">
-                    <div className="col-4">
-                        <div className="stat-title">
-                            <span className="text" data-bs-toggle="tooltip" data-placement="right" title="Total number of queries currently blocked and unable to make progress">
-                                Blocked Queries
-                            </span>
-                        </div>
-                    </div>
-                    <div className="col-4">
-                        <div className="stat-title">
-                            <span className="text" data-bs-toggle="tooltip" data-placement="right" title="Total amount of memory reserved by all running queries">
-                                Reserved Memory (B)
-                            </span>
-                        </div>
-                    </div>
-                    <div className="col-4">
-                        <div className="stat-title">
-                            <span className="text" data-bs-toggle="tooltip" data-placement="right" title="Moving average of CPU time utilized per second per worker">
-                                Worker Parallelism
-                            </span>
-                        </div>
-                    </div>
-                </div>
-                <div className="row stat-line-end">
-                    <div className="col-4">
-                        <div className="stat stat-large">
-                            <span className="stat-text">
-                                {this.state.blockedQueries[this.state.blockedQueries.length - 1]}
-                            </span>
-                            <span className="sparkline" id="blocked-queries-sparkline"><div className="loader">Loading ...</div></span>
-                        </div>
-                    </div>
-                    <div className="col-4">
-                        <div className="stat stat-large">
-                            <span className="stat-text">
-                                {formatDataSizeBytes(this.state.reservedMemory[this.state.reservedMemory.length - 1])}
-                            </span>
-                            <span className="sparkline" id="reserved-memory-sparkline"><div className="loader">Loading ...</div></span>
-                        </div>
-                    </div>
-                    <div className="col-4">
-                        <div className="stat stat-large">
-                            <span className="stat-text">
-                                {formatCount(this.state.perWorkerCpuTimeRate[this.state.perWorkerCpuTimeRate.length - 1])}
-                            </span>
-                            <span className="sparkline" id="cpu-time-rate-sparkline"><div className="loader">Loading ...</div></span>
-                        </div>
+                <div className="col-4">
+                    <div className="stat-title">
+                        <span className="text" data-bs-toggle="tooltip" data-placement="right" title="Moving average of input rows processed per second">
+                            Rows/sec
+                        </span>
                     </div>
                 </div>
             </div>
-        </div>);
-    }
-}
+            <div className="row stat-line-end">
+                <div className="col-4">
+                    <div className="stat stat-large">
+                        <span className="stat-text">
+                            {runningQueries[runningQueries.length - 1]}
+                        </span>
+                        <span className="sparkline" id="running-queries-sparkline"><div className="loader">Loading ...</div></span>
+                    </div>
+                </div>
+                <div className="col-4">
+                    <div className="stat stat-large">
+                        <span className="stat-text">
+                            {activeWorkers[activeWorkers.length - 1]}
+                        </span>
+                        <span className="sparkline" id="active-workers-sparkline"><div className="loader">Loading ...</div></span>
+                    </div>
+                </div>
+                <div className="col-4">
+                    <div className="stat stat-large">
+                        <span className="stat-text">
+                            {formatCount(rowInputRate[rowInputRate.length - 1])}
+                        </span>
+                        <span className="sparkline" id="row-input-rate-sparkline"><div className="loader">Loading ...</div></span>
+                    </div>
+                </div>
+            </div>
+            <div className="row">
+                <div className="col-4">
+                    <div className="stat-title">
+                        <span className="text" data-bs-toggle="tooltip" data-placement="right" title="Total number of queries currently queued and awaiting execution">
+                            Queued queries
+                        </span>
+                    </div>
+                </div>
+                <div className="col-4">
+                    <div className="stat-title">
+                        <span className="text" data-bs-toggle="tooltip" data-placement="right" title="Moving average of total running drivers">
+                            Runnable drivers
+                        </span>
+                    </div>
+                </div>
+                <div className="col-4">
+                    <div className="stat-title">
+                        <span className="text" data-bs-toggle="tooltip" data-placement="right" title="Moving average of input bytes processed per second">
+                            Bytes/sec
+                        </span>
+                    </div>
+                </div>
+            </div>
+            <div className="row stat-line-end">
+                <div className="col-4">
+                    <div className="stat stat-large">
+                        <span className="stat-text">
+                            {queuedQueries[queuedQueries.length - 1]}
+                        </span>
+                        <span className="sparkline" id="queued-queries-sparkline"><div className="loader">Loading ...</div></span>
+                    </div>
+                </div>
+                <div className="col-4">
+                    <div className="stat stat-large">
+                        <span className="stat-text">
+                            {formatCount(runningDrivers[runningDrivers.length - 1])}
+                        </span>
+                        <span className="sparkline" id="running-drivers-sparkline"><div className="loader">Loading ...</div></span>
+                    </div>
+                </div>
+                <div className="col-4">
+                    <div className="stat stat-large">
+                        <span className="stat-text">
+                            {formatDataSizeBytes(byteInputRate[byteInputRate.length - 1])}
+                        </span>
+                        <span className="sparkline" id="byte-input-rate-sparkline"><div className="loader">Loading ...</div></span>
+                    </div>
+                </div>
+            </div>
+            <div className="row">
+                <div className="col-4">
+                    <div className="stat-title">
+                        <span className="text" data-bs-toggle="tooltip" data-placement="right" title="Total number of queries currently blocked and unable to make progress">
+                            Blocked Queries
+                        </span>
+                    </div>
+                </div>
+                <div className="col-4">
+                    <div className="stat-title">
+                        <span className="text" data-bs-toggle="tooltip" data-placement="right" title="Total amount of memory reserved by all running queries">
+                            Reserved Memory (B)
+                        </span>
+                    </div>
+                </div>
+                <div className="col-4">
+                    <div className="stat-title">
+                        <span className="text" data-bs-toggle="tooltip" data-placement="right" title="Moving average of CPU time utilized per second per worker">
+                            Worker Parallelism
+                        </span>
+                    </div>
+                </div>
+            </div>
+            <div className="row stat-line-end">
+                <div className="col-4">
+                    <div className="stat stat-large">
+                        <span className="stat-text">
+                            {blockedQueries[blockedQueries.length - 1]}
+                        </span>
+                        <span className="sparkline" id="blocked-queries-sparkline"><div className="loader">Loading ...</div></span>
+                    </div>
+                </div>
+                <div className="col-4">
+                    <div className="stat stat-large">
+                        <span className="stat-text">
+                            {formatDataSizeBytes(reservedMemory[reservedMemory.length - 1])}
+                        </span>
+                        <span className="sparkline" id="reserved-memory-sparkline"><div className="loader">Loading ...</div></span>
+                    </div>
+                </div>
+                <div className="col-4">
+                    <div className="stat stat-large">
+                        <span className="stat-text">
+                            {formatCount(perWorkerCpuTimeRate[perWorkerCpuTimeRate.length - 1])}
+                        </span>
+                        <span className="sparkline" id="cpu-time-rate-sparkline"><div className="loader">Loading ...</div></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>);
+};
 
 export default ClusterHUD;
