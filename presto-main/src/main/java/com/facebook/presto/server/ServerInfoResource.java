@@ -14,20 +14,23 @@
 package com.facebook.presto.server;
 
 import com.facebook.airlift.node.NodeInfo;
+import com.facebook.presto.client.ExecutionType;
 import com.facebook.presto.client.NodeVersion;
 import com.facebook.presto.client.ServerInfo;
 import com.facebook.presto.execution.resourceGroups.ResourceGroupManager;
 import com.facebook.presto.metadata.StaticCatalogStore;
 import com.facebook.presto.spi.NodeState;
-import jakarta.annotation.security.RolesAllowed;
-import jakarta.inject.Inject;
-import jakarta.ws.rs.Consumes;
-import jakarta.ws.rs.GET;
-import jakarta.ws.rs.PUT;
-import jakarta.ws.rs.Path;
-import jakarta.ws.rs.Produces;
-import jakarta.ws.rs.WebApplicationException;
-import jakarta.ws.rs.core.Response;
+import com.facebook.presto.sql.analyzer.FeaturesConfig;
+
+import javax.annotation.security.RolesAllowed;
+import javax.inject.Inject;
+import javax.ws.rs.Consumes;
+import javax.ws.rs.GET;
+import javax.ws.rs.PUT;
+import javax.ws.rs.Path;
+import javax.ws.rs.Produces;
+import javax.ws.rs.WebApplicationException;
+import javax.ws.rs.core.Response;
 
 import java.util.Optional;
 
@@ -57,10 +60,11 @@ public class ServerInfoResource
     private final long startTime = System.nanoTime();
     private final NodeResourceStatusProvider nodeResourceStatusProvider;
     private final ResourceGroupManager resourceGroupManager;
+    private final FeaturesConfig featuresConfig;
     private NodeState nodeState = ACTIVE;
 
     @Inject
-    public ServerInfoResource(NodeVersion nodeVersion, NodeInfo nodeInfo, ServerConfig serverConfig, StaticCatalogStore catalogStore, GracefulShutdownHandler shutdownHandler, NodeResourceStatusProvider nodeResourceStatusProvider, ResourceGroupManager resourceGroupManager)
+    public ServerInfoResource(NodeVersion nodeVersion, NodeInfo nodeInfo, ServerConfig serverConfig, StaticCatalogStore catalogStore, GracefulShutdownHandler shutdownHandler, NodeResourceStatusProvider nodeResourceStatusProvider, ResourceGroupManager resourceGroupManager, FeaturesConfig featuresConfig)
     {
         this.version = requireNonNull(nodeVersion, "nodeVersion is null");
         this.environment = requireNonNull(nodeInfo, "nodeInfo is null").getEnvironment();
@@ -70,6 +74,7 @@ public class ServerInfoResource
         this.shutdownHandler = requireNonNull(shutdownHandler, "shutdownHandler is null");
         this.nodeResourceStatusProvider = requireNonNull(nodeResourceStatusProvider, "nodeResourceStatusProvider is null");
         this.resourceGroupManager = requireNonNull(resourceGroupManager, "resourceGroupManager is null");
+        this.featuresConfig = requireNonNull(featuresConfig, "featuresConfig is null");
     }
 
     @GET
@@ -77,7 +82,9 @@ public class ServerInfoResource
     public ServerInfo getInfo()
     {
         boolean starting = resourceManager ? true : !catalogStore.areCatalogsLoaded();
-        return new ServerInfo(version, environment, coordinator, starting, Optional.of(nanosSince(startTime)));
+        Optional<ExecutionType> executionType = featuresConfig.isNativeExecutionEnabled() ?
+                Optional.of(ExecutionType.NATIVE) : Optional.of(ExecutionType.JAVA);
+        return new ServerInfo(version, environment, coordinator, starting, Optional.of(nanosSince(startTime)), executionType);
     }
 
     @PUT
