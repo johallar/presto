@@ -15,8 +15,8 @@
 import React from "react";
 
 type Props = {
-    title: string
-}
+    title: string,
+};
 
 type State = {
     noConnection: boolean,
@@ -25,7 +25,7 @@ type State = {
     lastSuccess: number,
     modalShown: boolean,
     errorText: ?string,
-}
+};
 
 export class PageTitle extends React.Component<Props, State> {
     timeoutId: TimeoutID;
@@ -45,8 +45,8 @@ export class PageTitle extends React.Component<Props, State> {
     refreshLoop: () => void = () => {
         clearTimeout(this.timeoutId);
         fetch("/v1/info")
-            .then(response => response.json())
-            .then(info => {
+            .then((response) => response.json())
+            .then((info) => {
                 this.setState({
                     info: info,
                     noConnection: false,
@@ -54,24 +54,24 @@ export class PageTitle extends React.Component<Props, State> {
                     modalShown: false,
                 });
                 //$FlowFixMe$ Bootstrap 3 plugin
-                $('#no-connection-modal').hide();
+                $("#no-connection-modal").hide();
                 this.resetTimer();
             })
-            .catch(error => {
+            .catch((error) => {
                 this.setState({
                     noConnection: true,
                     lightShown: !this.state.lightShown,
-                    errorText: error
+                    errorText: error,
                 });
                 this.resetTimer();
 
-                if (!this.state.modalShown && (error || (Date.now() - this.state.lastSuccess) > 30 * 1000)) {
+                if (!this.state.modalShown && (error || Date.now() - this.state.lastSuccess > 30 * 1000)) {
                     //$FlowFixMe$ Bootstrap 3 plugin
-                    $('#no-connection-modal').hide();
-                    this.setState({modalShown: true});
+                    $("#no-connection-modal").hide();
+                    this.setState({ modalShown: true });
                 }
-        });
-    }
+            });
+    };
 
     resetTimer() {
         clearTimeout(this.timeoutId);
@@ -85,13 +85,12 @@ export class PageTitle extends React.Component<Props, State> {
     renderStatusLight(): any {
         if (this.state.noConnection) {
             if (this.state.lightShown) {
-                return <span className="status-light status-light-red" id="status-indicator"/>;
-            }
-            else {
-                return <span className="status-light" id="status-indicator"/>
+                return <span className="status-light status-light-red" id="status-indicator" />;
+            } else {
+                return <span className="status-light" id="status-indicator" />;
             }
         }
-        return <span className="status-light status-light-green" id="status-indicator"/>;
+        return <span className="status-light status-light-green" id="status-indicator" />;
     }
 
     render(): any {
@@ -107,32 +106,46 @@ export class PageTitle extends React.Component<Props, State> {
                         <div className="navbar-header">
                             <table>
                                 <tbody>
-                                <tr>
-                                    <td>
-                                        <a href="/ui/"><img src="assets/logo.png"/></a>
-                                    </td>
-                                    <td>
-                                        <span className="navbar-brand">Presto Router Overview</span>
-                                        
-                                    </td>
-                                </tr>
+                                    <tr>
+                                        <td>
+                                            <a href="/ui/">
+                                                <img src="assets/logo.png" />
+                                            </a>
+                                        </td>
+                                        <td>
+                                            <span className="navbar-brand">Presto Router Overview</span>
+                                        </td>
+                                    </tr>
                                 </tbody>
                             </table>
                         </div>
-                        <button className="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
+                        <button
+                            className="navbar-toggler"
+                            type="button"
+                            data-bs-toggle="collapse"
+                            data-bs-target="#navbar"
+                            aria-controls="navbar"
+                            aria-expanded="false"
+                            aria-label="Toggle navigation"
+                        >
                             <span className="navbar-toggler-icon"></span>
-                            </button>
+                        </button>
                         <div id="navbar" className="navbar-collapse collapse">
                             <ul className="nav navbar-nav navbar-right">
                                 <li>
                                     <span className="navbar-cluster-info">
-                                        <span className="uppercase">Environment</span><br/>
-                                        <span className="text" id="environment">{info.environment}</span>
+                                        <span className="uppercase">Environment</span>
+                                        <br />
+                                        <span className="text" id="environment">
+                                            {info.environment}
+                                        </span>
                                     </span>
                                 </li>
                                 <li>
                                     <span className="navbar-cluster-info logout">
-                                        <a className="btn btn-md btn-info style-check logout-btn" href="/logout">Logout</a>
+                                        <a className="btn btn-md btn-info style-check logout-btn" href="/logout">
+                                            Logout
+                                        </a>
                                     </span>
                                 </li>
                             </ul>
