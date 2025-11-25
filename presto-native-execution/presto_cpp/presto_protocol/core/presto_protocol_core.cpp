@@ -9702,6 +9702,45 @@ void from_json(const json& j, SemiJoinNode& p) {
 } // namespace facebook::presto::protocol
 namespace facebook::presto::protocol {
 
+static const std::pair<ExecutionType, json> ExecutionType_enum_table[] =
+    { // NOLINT: cert-err58-cpp
+        {ExecutionType::JAVA, "java"},
+        {ExecutionType::NATIVE, "native"},
+        {ExecutionType::NATIVE_GPU, "native-gpu"}};
+
+void to_json(json& j, const ExecutionType& e) {
+  static_assert(
+      std::is_enum<ExecutionType>::value, "ExecutionType must be an enum!");
+  const auto* it = std::find_if(
+      std::begin(ExecutionType_enum_table),
+      std::end(ExecutionType_enum_table),
+      [e](const std::pair<ExecutionType, json>& ej_pair) -> bool {
+        return ej_pair.first == e;
+      });
+  j = ((it != std::end(ExecutionType_enum_table))
+           ? it
+           : std::begin(ExecutionType_enum_table))
+          ->second;
+}
+
+void from_json(const json& j, ExecutionType& e) {
+  static_assert(
+      std::is_enum<ExecutionType>::value, "ExecutionType must be an enum!");
+  const auto* it = std::find_if(
+      std::begin(ExecutionType_enum_table),
+      std::end(ExecutionType_enum_table),
+      [&j](const std::pair<ExecutionType, json>& ej_pair) -> bool {
+        return ej_pair.second == j;
+      });
+  e = ((it != std::end(ExecutionType_enum_table))
+           ? it
+           : std::begin(ExecutionType_enum_table))
+          ->first;
+}
+
+} // namespace facebook::presto::protocol
+namespace facebook::presto::protocol {
+
 void to_json(json& j, const ServerInfo& p) {
   j = json::object();
   to_json_key(
@@ -9717,6 +9756,13 @@ void to_json(json& j, const ServerInfo& p) {
       j, "coordinator", p.coordinator, "ServerInfo", "bool", "coordinator");
   to_json_key(j, "starting", p.starting, "ServerInfo", "bool", "starting");
   to_json_key(j, "uptime", p.uptime, "ServerInfo", "Duration", "uptime");
+  to_json_key(
+      j,
+      "executionType",
+      p.executionType,
+      "ServerInfo",
+      "ExecutionType",
+      "executionType");
 }
 
 void from_json(const json& j, ServerInfo& p) {
@@ -9733,6 +9779,13 @@ void from_json(const json& j, ServerInfo& p) {
       j, "coordinator", p.coordinator, "ServerInfo", "bool", "coordinator");
   from_json_key(j, "starting", p.starting, "ServerInfo", "bool", "starting");
   from_json_key(j, "uptime", p.uptime, "ServerInfo", "Duration", "uptime");
+  from_json_key(
+      j,
+      "executionType",
+      p.executionType,
+      "ServerInfo",
+      "ExecutionType",
+      "executionType");
 }
 } // namespace facebook::presto::protocol
 namespace facebook::presto::protocol {
